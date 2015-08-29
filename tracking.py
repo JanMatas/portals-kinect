@@ -9,7 +9,8 @@ GUI = True
 MIN_CONTOUR_AREA = 4000
 HEIGHT_TOLERANCE = 10
 MAX_DISTANCE_TO_PARSE =  300
-
+counter_in = 0
+counter_out = 0
 
 def filter_frame(frame, bg_reference):
         # Function computes threshold of the frame and filters out all noise
@@ -139,22 +140,26 @@ def update_pairs(pairs, tracked_objects, centroids, t):
         obj.update(x, y, t)
 
 
-def update_missing(unused_objects, tracked_objects, counter_in, counter_out):
+def update_missing(unused_objects, tracked_objects, pass_callback):
     # Function up
     for unused_object in unused_objects:
         if unused_object.missing() == -1:
             if unused_object.get_direction() == 1:
-                counter_in += 1
+                pass_callback("in")
             if unused_object.get_direction() == -1:
-                counter_out += 1
+                pass_callback("out")
             tracked_objects.remove(unused_object)
-    return counter_in, counter_out
 
+def pass_callback(dir):
+    global counter_in, counter_out
+    if dir == "in":
+        counter_in += 1
+    elif dir == "out":
+        counter_out += 1
 
 def tracking_start():
     frame_delay = 50
-    counter_in = 0
-    counter_out = 0
+
     # Initialise videl capture
     cap = cv2.VideoCapture(URL)
     # Take first frame as bacground reference
@@ -196,9 +201,8 @@ def tracking_start():
         create_objects(unused_centroids, tracked_objects, t)
         # Update assigned centroid with current measurements
         update_pairs(pairs, tracked_objects, centroids, t)
-        # Delete missing objects and increment counters
-        counter_in, counter_out = update_missing(unused_objects,
-                tracked_objects, counter_in, counter_out)
+        # Delete missing objects and call callbacks
+        update_missing(unused_objects, tracked_objects, pass_callback)
 
         if GUI:
             # Show counters

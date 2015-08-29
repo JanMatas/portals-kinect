@@ -14,7 +14,8 @@ class TrackedObject():
         self.start_x = x
         self.start_y = y
 
-        self.color = (255*random.random(), 255*random.random(), 255*random.random())
+        self.color = (255*random.random(), 255*random.random(),
+                255*random.random())
 
 
 
@@ -34,7 +35,7 @@ class TrackedObject():
 
     def missing(self):
         self.frames_missing += 1
-        print "missing: " + str(self.frames_missing)
+
         if self.frames_missing > 10 or self.frames_since_start < 4:
             return -1
         else:
