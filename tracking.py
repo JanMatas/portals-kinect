@@ -9,25 +9,63 @@ GUI = True
 MIN_CONTOUR_AREA = 4000
 HEIGHT_TOLERANCE = 10
 MAX_DISTANCE_TO_PARSE =  300
+MAX_DISTANCE_TO_MERGE = 10
 counter_in = 0
-counter_out = 0
+counter_outt = 0
 
 def filter_frame(frame, bg_reference):
         # Function computes threshold of the frame and filters out all noise
 
         # Create grayscale version of the frame and blur it
         img_grayscale = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-        blur = cv2.blur(img_grayscale,(5,5))
+
         # Substract the bg_reference to find foreground
-        fg = cv2.absdiff(blur, bg_reference)
+        fg = cv2.absdiff(img_grayscale, bg_reference)
         #Threshold the foreground
         ret, thresh = cv2.threshold(fg, MIN_HEIGHT, 255, cv2.THRESH_BINARY)
-        #Execute erode and dilate functions to eliminate noise
-        erode_kernel = np.ones((5,5),np.uint8)
-        dilate_kernel = np.ones((20,20),np.uint8)
-        erosion = cv2.erode(thresh, erode_kernel,iterations = 1)
-        dilatation = cv2.erode(erosion, dilate_kernel,iterations = 1)
-        return dilatation
+        return thresh
+
+def merge_contours(contours):
+    contours = filter(lambda cnt : cv2.contourArea(cnt) > 0, contours)
+    merged_contours = []
+    cnts_with_centroids = []
+
+    for cnt in contours:
+        M = cv2.moments(cnt)
+        # Compute centroids from the moments
+        centroid_x = int(M['m10']/M['m00'])
+        centroid_y = int(M['m01']/M['m00'])
+
+        cnts_with_centroids.append(((centroid_x, centroid_y), cnt))
+
+    while cnts_with_centroids:
+        new_blob = []
+        root = cnts_with_centroids[0]
+        new_blob.append(root)
+        cnts_with_centroids.remove(root)
+
+
+        cnts_with_centroids = merge_contour_rec(root,
+                cnts_with_centroids, new_blob)
+        unified_contours = [cnt[1] for cnt in new_blob]
+        new_cnt = np.vstack(i for i in unified_contours)
+        hull = cv2.convexHull(new_cnt)
+        merged_contours.append(hull)
+    return merged_contours
+
+
+def merge_contour_rec(root_cnt, other_cnts, new_blob):
+    near_cnts = filter(lambda cnt: is_near(root_cnt, cnt), other_cnts)
+    other_cnts = filter(lambda cnt: not is_near(root_cnt, cnt), other_cnts)
+    new_blob += near_cnts
+
+    for cnt in near_cnts:
+        other_cnts = merge_contour_rec(cnt, other_cnts, new_blob)
+    return other_cnts
+
+def is_near(cnt1, cnt2):
+    return compute_distance(cnt1[0], cnt2[0]) < MAX_DISTANCE_TO_MERGE
+
 
 
 def find_contour_centroids(frame, filtered_fg):
@@ -39,6 +77,8 @@ def find_contour_centroids(frame, filtered_fg):
         #Find contour in a given frame
         _, contours, _ = cv2.findContours(filtered_fg.copy(), cv2.RETR_EXTERNAL,
                     cv2.CHAIN_APPROX_SIMPLE)
+        merge_contours(contours)
+        cv2.drawContours(frame,merge_contours(contours),-1,255,-1)
         # Filter the conturs to track only the valid ones
         valid_contours = filter(is_valid_contour, contours)
         centroids = []
@@ -151,11 +191,11 @@ def update_missing(unused_objects, tracked_objects, pass_callback):
             tracked_objects.remove(unused_object)
 
 def pass_callback(dir):
-    global counter_in, counter_out
+    global counter_in, counter_outt
     if dir == "in":
         counter_in += 1
     elif dir == "out":
-        counter_out += 1
+        counter_outt += 1
 
 def tracking_start():
     frame_delay = 50
@@ -164,8 +204,8 @@ def tracking_start():
     cap = cv2.VideoCapture(URL)
     # Take first frame as bacground reference
     _, initial_frame = cap.read()
-    img_grayscale = cv2.cvtColor(initial_frame,cv2.COLOR_BGR2GRAY)
-    bg_reference = cv2.blur(img_grayscale,(5,5))
+    bg_reference = cv2.cvtColor(initial_frame,cv2.COLOR_BGR2GRAY)
+
     # Iterate forever
     tracked_objects = []
     while(cap.isOpened()):
@@ -207,7 +247,7 @@ def tracking_start():
         if GUI:
             # Show counters
             font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(frame,str(counter_out),(10,50), font, 1,(0,0,255),2)
+            cv2.putText(frame,str(counter_outt),(10,50), font, 1,(0,0,255),2)
             cv2.putText(frame,str(counter_in),(10,400), font, 1,(0,0,255),2)
             cv2.imshow('frame',frame)
             cv2.imshow('fg',filtered_fg)
